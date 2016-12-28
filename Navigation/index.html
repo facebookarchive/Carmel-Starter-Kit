@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2016-present, Oculus VR, LLC.
+  All rights reserved.
+
+  This source code is licensed under the license found in the
+  LICENSE-examples file in the root directory of this source tree.
+-->
+<html>
+  <head>
+    <title>Navigation</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      #canvas_host {
+        width: 100%;
+        height: 100%;
+      }
+      canvas {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+      #messages {
+        position: absolute;
+        color: white;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.3.2/gl-matrix-min.js"></script>
+    <script src="../Common/WebVRCommon.js"></script>
+    <script src="../Common/GamepadState.js"></script>
+    <script src="../Common/WebVRPrograms.js"></script>
+    <script>
+      function start() {
+        var webVRCommon = new WebVRCommon({
+          layerSourceId: 'webgl-canvas',
+          messageElementId: 'messages',
+        });
+
+        // In this simple example the 'depth' is our only state
+        var depth = 1;
+
+        // Prevent the depth from going too deep.
+        var maxDepth = 6;
+
+        // Helper method to convert query parameters to json
+        function getJsonFromUrl() {
+          var query = location.search.substr(1);
+          var result = {};
+          query.split("&").forEach(function(part) {
+            var item = part.split("=");
+            result[item[0]] = decodeURIComponent(item[1]);
+          });
+          return result;
+        }
+
+        // Update our state from the current location
+        function loadFromUrl() {
+          var urlArgs = getJsonFromUrl();
+          changeState(Number(urlArgs.depth) || 1, true);
+        }
+
+        // When we change the state, we need to update the location and re-render the canvas (to visualize the change)
+        function changeState(newState, replace) {
+          depth = newState;
+          var path = window.location.pathname + "?";
+          // Encode the state as query parameters in the url.  This makes it so we can copy/paste the url and end up in the same state.
+          path += "depth=" + encodeURIComponent(depth);
+          if (replace) {
+            // Sometimes you want to replace the state, which doesn't push anything onto the backstack.  For example you might encode the camera yaw
+            // as state that doesn't change the backstack.
+            window.history.replaceState({}, "Navigation", path);
+          } else {
+            // Some state changes are considered by the user to be a new breadcrumb in the history.  For example if you are navigating through a menu,
+            // you would represent each 'depth' of the menu as a breadcrumb by calling pushState.  This doesn't actually navigate the browser.
+            window.history.pushState({}, "Navigation", path);
+          }
+          renderCanvas(depth, path);
+        };
+
+        // Helper method to render text to a canvas.
+        function renderCanvas(depth, path) {
+          var context = textureInfo.canvas.getContext('2d');
+          var gl = webVRCommon.gl;
+
+          context.font = '22pt Times New Roman';
+          context.fillStyle = "#C0C0C0"
+          context.fillRect(0, 0, textureInfo.canvas.width, textureInfo.canvas.height);
+          context.fillStyle = 'black';
+          var lines = getStateText(depth, path);
+          for (var i = 0; i < lines.length; ++i) {
+            context.fillText(lines[i], 10, 40 + i * 35);
+          }
+
+          // Copy canvas data over to the GL texture
+          gl.bindTexture(gl.TEXTURE_2D, textureInfo.texture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureInfo.canvas);
+        }
+
+        // Convert the current state into some text to visualize it.
+        function getStateText(depth, path) {
+          var breadcrumb = "Breadcrumb (tap to push state): ";
+          for (var i = 0; i < depth; ++i) {
+             breadcrumb += String.fromCharCode(97 + i);
+             if (i < depth - 1)
+              breadcrumb += " > ";
+          }
+
+          return [
+            "Current state: " + String.fromCharCode(96 + depth),
+            breadcrumb,
+            "Path: " + path
+          ];
+        }
+
+        // Each tap causes the depth to increase.
+        var oninput = function (action) {
+          switch (action) {
+            case 'tap':
+              if (depth < maxDepth)
+                changeState(depth + 1);
+              break;
+          }
+        };
+
+        // When the browser pops the state, we need to load the state from the Url again.
+        // The Gear VR back button will cause this event to be raised.
+        window.onpopstate = loadFromUrl;
+
+        // Helper for detecting swipes on the Gear VR touch pad.
+        gamepad = new GamepadState();
+        gamepad.ongearvrinput = oninput;
+
+        // When run in the browser, the keyboard emulates Gear VR taps
+        window.onmousedown = function (e) {
+            oninput('tap');
+        };
+
+        // Every frame we need to detect input events.
+        webVRCommon.update = function (time) {
+          gamepad.update(time);
+        };
+
+        webVRCommon.render = function (projectionMat, viewMat) {
+          // render state
+          renderQuad(textureInfo, projectionMat, viewMat, modelMat);
+        };
+
+        function renderQuad(textureInfo, projectionMat, viewMat, modelMat) {
+          if (!quad.loaded || !textureInfo.loaded) return;
+
+          // Render the texture using the quad geometry
+          const textureUnit = 0;
+          webVRCommon.useGeometry(quad.geometry, textureProgram);
+          webVRCommon.useTexture(textureInfo, textureUnit);
+          webVRCommon.setUniforms(textureProgram, {
+            diffuse: textureUnit,
+            projectionMat: projectionMat,
+            viewMat: viewMat,
+            modelMat: modelMat
+          });
+          webVRCommon.drawGeometry(quad.geometry);
+        };
+
+        // Initial setup of GL program and scene
+        var textureProgram = WebVRPrograms.createTextureProgram(webVRCommon);
+        var textureInfo = webVRCommon.loadCanvasTexture({
+          width: 1024,
+          height: 128,
+          generateMipmaps: false
+        });
+
+        var quad = webVRCommon.loadGeometry({ src: "../assets/quad.json" });
+
+        var a = textureInfo.height / textureInfo.width;
+        const modelMat = new Float32Array([
+          1, 0,    0, 0,
+          0, a,    0, 0,
+          0, 0,    1, 0,
+          0, 0.1, -1, 1
+        ]);
+
+        // When the page first loads, read the state from the Url in case we've deep-linked into some state.
+        loadFromUrl();
+        webVRCommon.start();
+      }
+    </script>
+  </head>
+  <body onload="start()">
+    <div id="canvas_host"><canvas id="webgl-canvas"></canvas></div>
+    <div id="messages"></div>
+  </body>
+</html>

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2016-present, Oculus VR, LLC.
+  All rights reserved.
+
+  This source code is licensed under the license found in the
+  LICENSE-examples file in the root directory of this source tree.
+-->
+<html>
+  <head>
+    <title>Gamepad</title>
+    <style>
+      body {
+        margin: 0;
+        background-color: black
+      }
+      #canvas_host {
+        width: 100%;
+        height: 100%;
+      }
+      canvas {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+      #messages {
+        position: absolute;
+        color: white;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.3.2/gl-matrix-min.js"></script>
+    <script src="../Common/GamepadState.js"></script>
+    <script src="../Common/WebVRCommon.js"></script>
+    <script src="../Common/WebVRPrograms.js"></script>
+    <script>
+      // This is the starting point of the sample, which is called when the HTML body has loaded
+      function start() {
+        var pressedText = "";         // The first line of text that will appear in the scene
+        var axesText = "";            // The second line of text that will appear in the scene
+        var gearActionText = "";      // The third line of text that will appear in the scene
+        var currentTime;              // The current frame's timestamp'
+        var lastGearVRActionTime;     // Used to allow the Gear VR action text to stay up for some time, instead of only a single frame
+        var lastTextRendered;         // Combined strings used to know when to rerender the canvas text
+
+        // See WebVRCommon.js, this is a WebVR+WebGL bootstrapping helper script
+        const webVRCommon = new WebVRCommon({
+          layerSourceId: "webgl-canvas",
+          messageElementId: "messages",
+        });
+
+        // See GamepadState.js, this is a simple wrapper around the navigator.getGamepads API with Gear VR input detection
+        var gamepadState = new GamepadState();
+
+        // When the gamepadState is updated it will use this callback to trigger any detected Gear VR actions
+        gamepadState.ongearvrinput = function (gearVRAction) {
+          gearActionText = "Gear VR Action:  " + gearVRAction;
+          lastGearVRActionTime = currentTime;
+        };
+
+        // The top level update callback for this sample, called every frame
+        webVRCommon.update = function (timestamp) {
+          currentTime = timestamp;
+
+          // Reset the Gear VR Action text after 500ms (so that it appears long enough to read)
+          if (!lastGearVRActionTime || currentTime - lastGearVRActionTime >= 500) {
+            gearActionText = "Gear VR Action:  ";
+          }
+
+          // Update the gamepad state
+          gamepadState.update();
+
+          // Update the pressed button text to reflect the buttons that are pressed this frame
+          pressedText = "Pressed Buttons: ";
+          for (var prop in gamepadState.pressedButtons) {
+            if (gamepadState.pressedButtons[prop]) {
+              pressedText += prop + ", ";
+            }
+          }
+
+          // Update the axes information to reflect the value of each axis this frame
+          axesText = "Axes:  ";
+          for (var prop in gamepadState.axes) {
+            axesText += gamepadState.axes[prop].toFixed(1) + ", ";
+          }
+        };
+
+        // The top level render callback for this sample, called every frame
+        webVRCommon.render = function (projectionMat, viewMat, eye) {
+          // wait for everything to load
+          if (!quad.loaded || !canvasTextureInfo.loaded) { return; }
+
+          const gl = webVRCommon.gl;
+
+          var combinedText = pressedText + axesText + gearActionText;
+
+          // If state has changed, we draw the gamepad information to text using Canvas2D
+          // and then render the Canvas2D into the scene as a GL texture.
+          if (combinedText != lastTextRendered) {
+            lastTextRendered = combinedText;
+
+            // Draw the Pressed Buttons and Axes information into the Canvas2DContext
+            textCanvasContext2D.fillStyle = "#C0C0C0"
+            textCanvasContext2D.fillRect(0, 0, canvasTextureInfo.canvas.width, canvasTextureInfo.canvas.height);
+            textCanvasContext2D.fillStyle = 'black';
+            textCanvasContext2D.fillText(pressedText, 15, canvasTextureInfo.canvas.height / 4);
+            textCanvasContext2D.fillText(axesText, 15, canvasTextureInfo.canvas.height / 2);
+            textCanvasContext2D.fillText(gearActionText, 15, canvasTextureInfo.canvas.height * 3 / 4);
+
+            // Copy canvas data over to the GL texture
+            gl.bindTexture(gl.TEXTURE_2D, canvasTextureInfo.texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvasTextureInfo.canvas);
+          }
+
+          // Render the texture using the quad geometry
+          const textureUnit = 0;
+          webVRCommon.useGeometry(quad.geometry, textureProgram);
+          webVRCommon.useTexture(canvasTextureInfo, textureUnit);
+          webVRCommon.setUniforms(textureProgram, {
+            diffuse: textureUnit,
+            projectionMat: projectionMat,
+            viewMat: viewMat,
+            modelMat: quadModelMat
+          });
+          webVRCommon.drawGeometry(quad.geometry);
+        };
+
+        // Initial setup of GL program and scene
+        const textureProgram = WebVRPrograms.createTextureProgram(webVRCommon);
+        const canvasTextureInfo = webVRCommon.loadCanvasTexture({
+          width: 1024,
+          height: 512,
+          generateMipmaps: false
+        });
+
+        // This 2D context is used for drawing the text each frame
+        const textCanvasContext2D = canvasTextureInfo.canvas.getContext('2d');
+        textCanvasContext2D.font = '48pt Times New Roman';
+
+        var quad = webVRCommon.loadGeometry({ src: "../assets/quad.json" });
+
+        // translate to z = -1, scale y by 0.5 to match the texture size
+        const quadModelMat = new Float32Array([
+          1, 0,   0, 0,
+          0, 0.5, 0, 0,
+          0, 0,   1, 0,
+          0, 0,  -1, 1
+        ]);
+
+        webVRCommon.start();
+      }
+    </script>
+  </head>
+  <body onload="start()">
+    <div id="canvas_host"><canvas id="webgl-canvas"></canvas></div>
+    <div id="messages"></div>
+  </body>
+</html>

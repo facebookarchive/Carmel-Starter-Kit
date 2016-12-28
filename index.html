@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2016-present, Oculus VR, LLC.
+  All rights reserved.
+
+  This source code is licensed under the license found in the
+  LICENSE-examples file in the root directory of this source tree.
+-->
+<html>
+  <head>
+    <title>Carmel Links</title>
+    <style>
+    h1 {
+      color: #404040;
+    }
+    div.description {
+      color: #404040;
+      font-size: 14pt;
+      margin-bottom: 15px;
+    }
+    a {
+        color: #404040;
+    }
+    a.carmelLink {
+      color: #fefefe;
+      background-color: #404040;
+
+      display: inline-block;
+      padding-top: 7px;
+      padding-left: 10px;
+      padding-right: 10px;
+      padding-bottom: 7px;
+
+      margin-right: 5px;
+      margin-bottom: 8px;
+
+      border-radius: 5px;
+
+      text-decoration: none;
+    }
+    </style>
+  </head>
+  <body>
+    <h1>Carmel Starter Kit Samples</h1>
+    <div class="description">
+      Welcome to the Carmel WebVR Starter Kit. Here you will find a set of samples which helps introduce you
+      to the Web VR 1.1 API and how to use it to create experiences for the Carmel Developer Preview.
+    </div>
+    <div class="description">
+      This page is best launched from your Android browser of choice. Next follow each link to either view your
+      content in the Carmel Developer Preview using the <b>ovrweb</b> protocol on Android or launch it in your
+      existing 2D browser to see how it will look outside of VR.
+    </div>
+    <div class="description">
+      For more information on each sample you can review our full <a href="https://developer.oculus.com/documentation/vrweb/latest/concepts/carmel-getting-started/">
+      documentation online at the Oculus Developer Center</a>.
+    </div>
+    <div class="description">
+      As we make changes you can download the <a href="https://developer.oculus.com/downloads/pc/1.0/Carmel_Starter_Kit/">
+      latest version of our samples</a> from the Oculus Developer Site. We will also keep our
+      <a href="https://s3.amazonaws.com/static.oculus.com/carmel/WebVRSamples/index.html">live samples</a> updated
+      with any changes.
+    </div>
+    <div class="description">
+      Please provide any <a href="https://goo.gl/forms/vLpxeR99c606RedC3">feedback on the samples, documentation or Carmel.</a>
+    </div>
+    <h1>Launch in the Carmel Developer Preview:</h1>
+    <div id="playerLinks">
+    </div>
+    <h1>Launch in your browser:</h1>
+    <div id="browserLinks">
+    </div>
+    <script>
+        function makeCarmelLink(localPath, name) {
+            var browserLink = document.createElement("a");
+            browserLink.href = localPath;
+            browserLink.className = "carmelLink";
+            browserLink.innerHTML = name;
+            document.getElementById("browserLinks").appendChild(browserLink);
+
+            var playerLink = document.createElement("a");
+            playerLink.href = "ovrweb:" + browserLink.href;
+            playerLink.className = "carmelLink";
+            playerLink.innerHTML = name;
+            document.getElementById("playerLinks").appendChild(playerLink);
+        }
+
+        makeCarmelLink("HelloWebVR/index.html", "Hello WebVR");
+        makeCarmelLink("Pano/index.html", "Pano");
+        makeCarmelLink("Gamepad/index.html", "Gamepad");
+        makeCarmelLink("Navigation/index.html", "Navigation");
+    </script>
+  </body>
+</html>

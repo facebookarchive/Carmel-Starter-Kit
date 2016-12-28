@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2016-present, Oculus VR, LLC.
+  All rights reserved.
+
+  This source code is licensed under the license found in the
+  LICENSE-examples file in the root directory of this source tree.
+-->
+<html>
+  <head>
+    <title>Pano</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      #canvas_host {
+        width: 100%;
+        height: 100%;
+      }
+      canvas {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+      #messages {
+        position: absolute;
+        color: white;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.3.2/gl-matrix-min.js"></script>
+    <script src="../Common/WebVRCommon.js"></script>
+    <script src="../Common/Pano.js"></script>
+    <script src="../Common/GamepadState.js"></script>
+    <script>
+      function start() {
+        var webVRCommon = new WebVRCommon({
+          layerSourceId: 'webgl-canvas',
+          messageElementId: 'messages',
+        });
+
+        var panos = [];
+        var currentPano = 0;
+
+        // These factory methods create different types of Panos.
+        var createPano = [
+          function () {
+            return new Pano(webVRCommon, {
+              src: "../assets/monoPano.jpg",
+              stereoMode: Pano.MONO
+            });
+          },
+          function () {
+            return new Pano(webVRCommon, {
+              src: "../assets/stereoPano.jpg",
+              stereoMode: Pano.STEREO_TOP_BOTTOM
+            });
+          },
+          function () {
+            return new Pano(webVRCommon, {
+              src: [
+                "../assets/cube_1.jpg",
+                "../assets/cube_2.jpg",
+                "../assets/cube_3.jpg",
+                "../assets/cube_4.jpg",
+                "../assets/cube_5.jpg",
+                "../assets/cube_6.jpg"
+              ]
+            });
+          },
+          function () {
+            return new Pano(webVRCommon, {
+              src: [
+                "../assets/cube_1.jpg",
+                "../assets/cube_2.jpg",
+                "../assets/cube_3.jpg",
+                "../assets/cube_4.jpg",
+                "../assets/cube_5.jpg",
+                "../assets/cube_6.jpg",
+                "../assets/cube_7.jpg",
+                "../assets/cube_8.jpg",
+                "../assets/cube_9.jpg",
+                "../assets/cube_10.jpg",
+                "../assets/cube_11.jpg",
+                "../assets/cube_12.jpg"
+              ]
+            });
+          },
+        ];
+
+        // If you swipe left/right on the Gear VR, or press left/right on the keyboard,
+        // we cycle between panos.
+        var oninput = function (direction) {
+          switch (direction) {
+            case 'left':
+              currentPano = (currentPano - 1 + createPano.length) % createPano.length;
+              break;
+            case 'right':
+              currentPano = (currentPano + 1) % createPano.length;
+              break;
+          }
+        };
+
+        // Helper for detecting swipes on the Gear VR touch pad.
+        gamepad = new GamepadState();
+        gamepad.ongearvrinput = oninput;
+
+        // When run in the browser, the keyboard emulates Gear VR swipes
+        window.onkeydown = function (e) {
+          switch (e.keyCode) {
+            case 37:
+              oninput('left');
+              break;
+            case 39:
+              oninput('right');
+              break;
+          }
+        };
+
+        // Every frame we need to detect input events.
+        webVRCommon.update = function (time) {
+          gamepad.update(time);
+        };
+
+        webVRCommon.render = function (projectionMat, viewMat, eye) {
+          // delay create the pano
+          if (!panos[currentPano]) {
+            panos[currentPano] = createPano[currentPano]();
+          }
+
+          var context = {
+            projectionMat: projectionMat,
+            viewMat: viewMat,
+            eye: eye
+          };
+
+          // render the current pano
+          panos[currentPano].render(context);
+        };
+
+        webVRCommon.start();
+      }
+    </script>
+  </head>
+  <body onload="start()">
+    <div id="canvas_host"><canvas id="webgl-canvas"></canvas></div>
+    <div id="messages"></div>
+  </body>
+</html>

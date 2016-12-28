@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2016-present, Oculus VR, LLC.
+  All rights reserved.
+
+  This source code is licensed under the license found in the
+  LICENSE-examples file in the root directory of this source tree.
+-->
+<html>
+  <head>
+    <title>Hello WebVR</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      canvas {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+      #messages {
+        position: absolute;
+        color: white;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script>
+      var vrDisplay;      // The VRDisplay we will present to, discovered from getVRDisplays
+      var frameData;      // HMD information, populated each frame by getFrameData
+      var layerSource;    // The source of the VRLayer passed to requestPresent, our canvas element.
+
+      var gl;             // The webgl context of the canvas element, used to render the scene
+      var quadProgram;    // The WebGLProgram we will create, a simple quad rendering program
+      var attribs;        // A map of shader attributes to their location in the program
+      var uniforms;       // A map of shader uniforms to their location in the program
+      var vertBuffer;     // Vertex buffer used for rendering the scene
+      var texture;        // The texture that will be bound to the diffuse sampler
+      var quadModelMat;   // The quad's model matrix which we will animate
+
+      // This is the entrypoint to this sample and where we attempt to begin VR presentation
+      function requestPresent() {
+        // First, initialize our WebGL program for rendering a simple quad
+        initWebGLProgram();
+
+        // Next, we will get the first VRDisplay that is available and try to requestPresent.
+        // If VR is unavailable or we aren't able to present, we will simply display an HTML message in the page.
+        if (navigator.getVRDisplays) {
+          navigator.getVRDisplays().then(function (displays) {
+            if (displays.length > 0) {
+              // We reuse this every frame to avoid generating garbage
+              frameData = new VRFrameData();
+
+              vrDisplay = displays[0];
+
+              // We must adjust the canvas (our VRLayer source) to match the VRDisplay
+              var leftEye = vrDisplay.getEyeParameters("left");
+              var rightEye = vrDisplay.getEyeParameters("right");
+
+              // This layer source is a canvas so we will update its width and height based on the eye parameters.
+              // For simplicity we will render each eye at the same resolution
+              layerSource.width = Math.max(leftEye.renderWidth, rightEye.renderWidth) * 2;
+              layerSource.height = Math.max(leftEye.renderHeight, rightEye.renderHeight);
+
+              // This can normally only be called in response to a user gesture.
+              // In Carmel, we can begin presenting the VR scene right away.
+              vrDisplay.requestPresent([{ source: layerSource }]).then(function () {
+                // Start our render loop, which is synchronized with the VRDisplay refresh rate
+                vrDisplay.requestAnimationFrame(onAnimationFrame);
+              }).catch(function (err) {
+                // The Carmel Developer preview allows entry into VR at any time because it is a VR first experience.
+                // Other browsers will only allow this to succeed if called in response to user interaction, such as a click or tap though.
+                // We expect this to fail outside of Carmel and would present the user with an "Enter VR" button of some sort instead.
+                addHTMLMessage("Failed to requestPresent.");
+              });
+            } else {
+              // Usually you would want to hook the vrdisplayconnect event and only try to request present then.
+              addHTMLMessage("There are no VR displays connected.");
+            }
+          }).catch(function (err) {
+            addHTMLMessage("VR Displays are not accessible in this context.  Perhaps you are in an iframe without the allowvr attribute specified.");
+          });
+        } else {
+          addHTMLMessage("WebVR is not supported on this browser.");
+          addHTMLMessage("To support progressive enhancement your fallback code should render a normal Canvas based WebGL experience for the user.");
+        }
+      }
+
+      // Once we are presenting this will get called any time a new frame should be rendered on the VRDisplay
+      // The timestamp passed to our callback is the current DOMHighResTimeStamp at the start of the frame.
+      // We can use the timestamp to update our scene and perform animations in a framerate independent way.
+      function onAnimationFrame(timestamp) {
+        // Continue to request frames to keep the render loop going
+        vrDisplay.requestAnimationFrame(onAnimationFrame);
+
+        // Clear the layer source - we do this outside of render to avoid clearing twice
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // Update the scene once per frame
+        update(timestamp);
+
+        // Get the current pose data
+        vrDisplay.getFrameData(frameData);
+
+        // Render the left eye
+        gl.viewport(0, 0, layerSource.width * 0.5, layerSource.height);
+        render(frameData.leftProjectionMatrix, frameData.leftViewMatrix);
+
+        // Render the right eye
+        gl.viewport(layerSource.width * 0.5, 0, layerSource.width * 0.5, layerSource.height);
+        render(frameData.rightProjectionMatrix, frameData.rightViewMatrix);
+
+        // Submit the newly rendered layer to be presented by the VRDisplay
+        vrDisplay.submitFrame();
+      }
+
+      function update(timestamp) {
+        // Animate the z location of the quad based on the current frame timestamp
+        var oscillationSpeed =  Math.PI / 2;
+        var z = -1 + Math.cos(oscillationSpeed * timestamp / 1000);
+        quadModelMat[14] = z
+      }
+
+      // For VR, it's important that your render method is parameterized by the camera
+      // (projection and view matrices) so that it can be used to render from each
+      // eye's perspective
+      function render(projectionMat, viewMat) {
+        gl.useProgram(quadProgram);
+
+        // The view and projection uniforms are passed in and are different for the left eye and right eye
+        gl.uniformMatrix4fv(uniforms.projectionMat, false, projectionMat);
+        gl.uniformMatrix4fv(uniforms.viewMat, false, viewMat);
+
+        // The remainder of our rendering is the same for both eyes now that view and projection have been set up.
+        gl.uniformMatrix4fv(uniforms.modelMat, false, quadModelMat);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertBuffer);
+
+        gl.enableVertexAttribArray(attribs.position);
+        gl.enableVertexAttribArray(attribs.texCoord);
+
+        gl.vertexAttribPointer(attribs.position, 3, gl.FLOAT, false, 20, 0);
+        gl.vertexAttribPointer(attribs.texCoord, 2, gl.FLOAT, false, 20, 12);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(uniforms.diffuse, 0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+      }
+
+      function initWebGLProgram() {
+        layerSource =  document.getElementById("webgl-canvas");
+
+        var glAttribs = {
+          alpha: false,                   // The canvas will not contain an alpha channel
+          antialias: true,                // We want the canvas to perform anti-aliasing
+          preserveDrawingBuffer: false    // We don't want our drawing to be retained between frames, we will fully rerender each frame.
+        };
+
+        // You should also check for "experimental-webgl" when implementing support for canvas based WebGL fallback when VR is not available.
+        gl = layerSource.getContext("webgl", glAttribs);
+
+        var quadVS = [
+          "uniform mat4 projectionMat;",
+          "uniform mat4 viewMat;",
+          "uniform mat4 modelMat;",
+          "attribute vec3 position;",
+          "attribute vec2 texCoord;",
+          "varying vec2 vTexCoord;",
+
+          "void main() {",
+          "  vTexCoord = texCoord;",
+          "  gl_Position = projectionMat * viewMat * modelMat * vec4(position, 1.0);",
+          "}",
+        ].join("\n");
+
+        var quadFS = [
+          "precision mediump float;",
+          "uniform sampler2D diffuse;",
+          "varying vec2 vTexCoord;",
+
+          "void main() {",
+          "  gl_FragColor = texture2D(diffuse, vTexCoord);",
+          "}",
+        ].join("\n");
+
+        quadProgram = gl.createProgram();
+
+        var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.attachShader(quadProgram, vertexShader);
+        gl.shaderSource(vertexShader, quadVS);
+        gl.compileShader(vertexShader);
+
+        var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.attachShader(quadProgram, fragmentShader);
+        gl.shaderSource(fragmentShader, quadFS);
+        gl.compileShader(fragmentShader);
+
+        attribs = {
+          position: 0,
+          texCoord: 1
+        };
+
+        gl.bindAttribLocation(quadProgram, attribs.position, "position");
+        gl.bindAttribLocation(quadProgram, attribs.texCoord, "texCoord");
+
+        gl.linkProgram(quadProgram);
+
+        uniforms = {
+          projectionMat: gl.getUniformLocation(quadProgram, "projectionMat"),
+          modelMat: gl.getUniformLocation(quadProgram, "modelMat"),
+          viewMat: gl.getUniformLocation(quadProgram, "viewMat"),
+          diffuse: gl.getUniformLocation(quadProgram, "diffuse")
+        };
+
+        var size = 0.2;
+        var quadVerts = [];
+
+        var x = 0;
+        var y = 0;
+        var z = -1;
+        quadVerts.push(x - size, y - size, z + size, 0.0, 1.0);
+        quadVerts.push(x + size, y - size, z + size, 1.0, 1.0);
+        quadVerts.push(x + size, y + size, z + size, 1.0, 0.0);
+        quadVerts.push(x - size, y + size, z + size, 0.0, 0.0);
+
+        vertBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(quadVerts), gl.STATIC_DRAW);
+
+        quadModelMat = new Float32Array([
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1
+        ]);
+
+        texture = gl.createTexture();
+
+        var image = new Image();
+
+        // When the image is loaded, we will copy it to the GL texture
+        image.addEventListener("load", function() {
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+
+          // To avoid bad aliasing artifacts we will generate mip maps to use when rendering this texture at various distances
+          gl.generateMipmap(gl.TEXTURE_2D);
+        }, false);
+
+        // Start loading the image
+        image.src = "../assets/cube-sea.png";
+      }
+
+      function addHTMLMessage(msgText) {
+        var message = document.createElement("div");
+        message.innerHTML = msgText;
+        document.getElementById("messages").appendChild(message);
+      }
+    </script>
+  </head>
+  <body onload="requestPresent()">
+    <canvas id="webgl-canvas"></canvas>
+    <div id="messages"></div>
+  </body>
+</html>
