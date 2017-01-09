@@ -1,6 +1,6 @@
 # Carmel WebVR Starter kit Samples
 
-Samples used to demonstrate how to get started with WebVR on Carmel
+Samples used to demonstrate how to get started with WebVR on Carmel.
 
 ## Running Samples
 
