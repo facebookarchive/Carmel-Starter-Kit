@@ -3,6 +3,9 @@
 These examples are provided as-is and are updated to present best practices
 for programming WebVR experiences against Carmel and other browsers.
 
+## Code of Conduct
+The code of conduct is described in [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+
 ## Our Development Process
 
 Our examples are copied from an internal repository which is tracking the
